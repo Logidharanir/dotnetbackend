@@ -18,11 +18,12 @@ builder.Services.AddCors(opts =>
 {
     opts.AddPolicy("AllowReactApp",
         p => p.WithOrigins(
-                "http://localhost:3000",
-                "https://your-frontend.vercel.app")   // add your real URL
-              .AllowAnyHeader()
-              .AllowAnyMethod());
+            "http://localhost:3000",
+            "https://full-stack-dev-basics.vercel.app")  // ✅ Your actual deployed Vercel URL
+          .AllowAnyHeader()
+          .AllowAnyMethod());
 });
+
 
 var app = builder.Build();
 
