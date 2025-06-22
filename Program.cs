@@ -3,40 +3,47 @@ using MyAPI.Models;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// Add services to the container.
+// ── Services ──────────────────────────────────────────────
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-// Add DB Context with connection string
-builder.Services.AddDbContext<EmployeeDbContext>(options =>
-    options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
+// DbContext
+builder.Services.AddDbContext<EmployeeDbContext>(opts =>
+    opts.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
-// ✅ Add CORS to allow requests from React (localhost:3000)
-builder.Services.AddCors(options =>
+// CORS (add your Render/Vercel frontend later)
+builder.Services.AddCors(opts =>
 {
-    options.AddPolicy("AllowReactApp",
-        policy => policy.WithOrigins("http://localhost:3000")
-                        .AllowAnyHeader()
-                        .AllowAnyMethod());
+    opts.AddPolicy("AllowReactApp",
+        p => p.WithOrigins(
+                "http://localhost:3000",
+                "https://your-frontend.vercel.app")   // add Render/Vercel URL here
+              .AllowAnyHeader()
+              .AllowAnyMethod());
 });
 
 var app = builder.Build();
 
-// Configure the HTTP request pipeline.
-if (app.Environment.IsDevelopment())
+// ── Middleware ────────────────────────────────────────────
+// Enable Swagger in *both* Development & Production
+if (app.Environment.IsDevelopment() || app.Environment.IsProduction())
 {
     app.UseSwagger();
-    app.UseSwaggerUI();
+    app.UseSwaggerUI(c =>
+    {
+        c.SwaggerEndpoint("/swagger/v1/swagger.json", "My API V1");
+        c.RoutePrefix = "swagger";   // so URL is /swagger
+    });
 }
 
-app.UseHttpsRedirection();
+// UseHttpsRedirection is optional on Render.
+// Comment out if it causes redirect loops.
+// app.UseHttpsRedirection();
 
-// ✅ Enable CORS here
 app.UseCors("AllowReactApp");
-
 app.UseAuthorization();
 
-app.MapControllers(); // Correct mapping for API Controllers
+app.MapControllers();
 
 app.Run();
