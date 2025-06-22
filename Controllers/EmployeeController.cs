@@ -1,100 +1,144 @@
 using Microsoft.AspNetCore.Mvc;
-using MyAPI.Models;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using MyAPI.Models;
 
-[Route("api/[controller]")]
-[ApiController]
-public class EmployeeController : ControllerBase
+namespace MyAPI.Controllers
 {
-    private readonly EmployeeDbContext _context;
-
-    public EmployeeController(EmployeeDbContext context)
+    [Route("api/[controller]")]
+    [ApiController]
+    public class EmployeeController : ControllerBase
     {
-        _context = context;
-    }
+        private readonly EmployeeDbContext _context;
 
-    // ✅ GET all employees
-    [HttpGet]
-    public ActionResult<List<Employee>> GetEmployees()
-    {
-        return _context.Employees.ToList();
-    }
-
-    // ✅ GET single employee by ID
-    [HttpGet("{id}")]
-    public ActionResult<Employee> GetEmployee(int id)
-    {
-        var emp = _context.Employees.Find(id);
-        if (emp == null) return NotFound();
-        return emp;
-    }
-
-    // ✅ POST new employee
-    [HttpPost("add")]
-    public ActionResult<Employee> AddEmployees(Employee employee)
-    {
-        if (employee == null)
-            return BadRequest("Employee data is null.");
-
-        _context.Employees.Add(employee);
-        _context.SaveChanges();
-        return CreatedAtAction(nameof(GetEmployee), new { id = employee.EmployeeId }, employee);
-    }
-
-    // ✅ PUT - Update full employee
-    [HttpPut("{id}")]
-    public IActionResult UpdateEmployee(int id, Employee employee)
-    {
-        if (id != employee.EmployeeId)
-            return BadRequest("ID mismatch.");
-
-        _context.Entry(employee).State = EntityState.Modified;
-
-        try
+        public EmployeeController(EmployeeDbContext context)
         {
-            _context.SaveChanges();
-        }
-        catch (DbUpdateConcurrencyException)
-        {
-            if (!_context.Employees.Any(e => e.EmployeeId == id))
-                return NotFound();
-            else
-                throw;
+            _context = context;
         }
 
-        return NoContent();
-    }
+        // ─────────────────────────────────────────────────────────────
+        // GET /api/Employee   →  all employees
+        // ─────────────────────────────────────────────────────────────
+        [HttpGet]
+        public async Task<IActionResult> GetEmployees()
+        {
+            try
+            {
+                var list = await _context.Employees.ToListAsync();
+                return Ok(list);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
 
-    // ✅ PATCH - Partial update (e.g., only salary or name)
-    [HttpPatch("{id}")]
-    public async Task<IActionResult> PatchEmployee(int id, [FromBody] JsonElement patchData)
-    {
-        var employee = await _context.Employees.FindAsync(id);
-        if (employee == null) return NotFound();
+        // ─────────────────────────────────────────────────────────────
+        // GET /api/Employee/{id}   →  single employee
+        // ─────────────────────────────────────────────────────────────
+        [HttpGet("{id}")]
+        public async Task<IActionResult> GetEmployee(int id)
+        {
+            try
+            {
+                var emp = await _context.Employees.FindAsync(id);
+                return emp is null ? NotFound() : Ok(emp);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
 
-        // Example: Allow patching "salary" and "name"
-        if (patchData.TryGetProperty("salary", out var salaryProp))
-            employee.Salary = salaryProp.GetDecimal();
+        // ─────────────────────────────────────────────────────────────
+        // POST /api/Employee/add   →  create new employee
+        // ─────────────────────────────────────────────────────────────
+        [HttpPost("add")]
+        public async Task<IActionResult> AddEmployee([FromBody] Employee employee)
+        {
+            if (employee is null) return BadRequest("Employee data is null.");
 
-        if (patchData.TryGetProperty("name", out var nameProp))
-            employee.Name = nameProp.GetString();
+            try
+            {
+                _context.Employees.Add(employee);
+                await _context.SaveChangesAsync();
+                return CreatedAtAction(nameof(GetEmployee),
+                                       new { id = employee.EmployeeId }, employee);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
 
-        await _context.SaveChangesAsync();
-        return Ok(employee);
-    }
+        // ─────────────────────────────────────────────────────────────
+        // PUT /api/Employee/{id}   →  full update
+        // ─────────────────────────────────────────────────────────────
+        [HttpPut("{id}")]
+        public async Task<IActionResult> UpdateEmployee(int id, [FromBody] Employee employee)
+        {
+            if (id != employee.EmployeeId) return BadRequest("ID mismatch.");
 
-    // ✅ DELETE employee
-    [HttpDelete("{id}")]
-    public async Task<IActionResult> DeleteEmployee(int id)
-    {
-        var employee = await _context.Employees.FindAsync(id);
-        if (employee == null)
-            return NotFound();
+            try
+            {
+                _context.Entry(employee).State = EntityState.Modified;
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                return !_context.Employees.Any(e => e.EmployeeId == id)
+                       ? NotFound()
+                       : StatusCode(500, "Concurrency error updating record.");
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
 
-        _context.Employees.Remove(employee);
-        await _context.SaveChangesAsync();
+        // ─────────────────────────────────────────────────────────────
+        // PATCH /api/Employee/{id}   →  partial update
+        // ─────────────────────────────────────────────────────────────
+        [HttpPatch("{id}")]
+        public async Task<IActionResult> PatchEmployee(int id, [FromBody] JsonElement body)
+        {
+            try
+            {
+                var emp = await _context.Employees.FindAsync(id);
+                if (emp is null) return NotFound();
 
-        return NoContent();
+                if (body.TryGetProperty("salary", out var s)) emp.Salary = s.GetDecimal();
+                if (body.TryGetProperty("name",   out var n)) emp.Name   = n.GetString();
+
+                await _context.SaveChangesAsync();
+                return Ok(emp);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
+
+        // ─────────────────────────────────────────────────────────────
+        // DELETE /api/Employee/{id}
+        // ─────────────────────────────────────────────────────────────
+        [HttpDelete("{id}")]
+        public async Task<IActionResult> DeleteEmployee(int id)
+        {
+            try
+            {
+                var emp = await _context.Employees.FindAsync(id);
+                if (emp is null) return NotFound();
+
+                _context.Employees.Remove(emp);
+                await _context.SaveChangesAsync();
+                return NoContent();
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, $"Server Error: {ex.Message}");
+            }
+        }
     }
 }
